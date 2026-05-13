@@ -17,6 +17,8 @@ public:
     void update(const QPointF& center, float gravityStrength);
     void draw(QPainter& p) const;
 
+    bool dead() const { return life <= 0; }
+
 private:
     QPointF pos;
     QPointF vel;

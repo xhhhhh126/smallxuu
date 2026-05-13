@@ -1,5 +1,6 @@
 #include "galaxy.h"
 #include "particle.h"
+
 #include <QPainter>
 #include <QRandomGenerator>
 #include <QLinearGradient>
@@ -14,7 +15,7 @@ GalaxyWindow::GalaxyWindow(QWidget *parent)
     setAutoFillBackground(false);
 
     connect(&timer, &QTimer::timeout, this, &GalaxyWindow::updateScene);
-    timer.start(16); // ~60 FPS
+    timer.start(16);
 }
 
 void GalaxyWindow::resizeEvent(QResizeEvent *event)
@@ -27,7 +28,6 @@ void GalaxyWindow::resizeEvent(QResizeEvent *event)
         spawnParticles(particleCount);
         inited = true;
     } else if (!dragging) {
-        // 窗口变化时，中心跟着居中一点点
         center = QPointF(width() / 2.0, height() / 2.0);
         targetCenter = center;
     }
@@ -60,17 +60,24 @@ void GalaxyWindow::spawnParticles(int count)
 
 void GalaxyWindow::updateScene()
 {
-    // 平滑移动中心
     center += (targetCenter - center) * 0.08;
 
     for (Particle* p : particles) {
         p->update(center, gravityStrength);
 
-        // 粒子生命结束后重生
-        // 这里不用直接访问 life，简单做法：漂移太远就重置
-        // 由于 life 是私有的，这里用位置范围判断更省事
-        if (std::abs(p->pos().x()) > 1000000) {
-            // 占位，不会触发
+        if (p->dead()) {
+            static const QVector<QColor> colors = {
+                QColor(255, 120, 120),
+                QColor(255, 180, 90),
+                QColor(120, 200, 255),
+                QColor(180, 120, 255),
+                QColor(120, 255, 180),
+                QColor(255, 255, 255)
+            };
+
+            auto *rng = QRandomGenerator::global();
+            QColor c = colors[rng->bounded(colors.size())];
+            p->reset(center, c);
         }
     }
 
@@ -79,14 +86,12 @@ void GalaxyWindow::updateScene()
 
 void GalaxyWindow::paintBackground(QPainter& p)
 {
-    // 深色星空渐变
     QRadialGradient bg(QPointF(width() * 0.5, height() * 0.4), std::max(width(), height()) * 0.9);
     bg.setColorAt(0.0, QColor(25, 20, 50));
     bg.setColorAt(0.45, QColor(10, 10, 28));
     bg.setColorAt(1.0, QColor(2, 2, 10));
     p.fillRect(rect(), bg);
 
-    // 生成固定星点
     static QVector<QPointF> stars;
     static QSize lastSize;
 
@@ -113,7 +118,6 @@ void GalaxyWindow::paintBackground(QPainter& p)
 
 void GalaxyWindow::drawCenterBody(QPainter& p)
 {
-    // 中心恒星
     QRadialGradient star(center, 80);
     star.setColorAt(0.0, QColor(255, 255, 220, 255));
     star.setColorAt(0.2, QColor(255, 210, 120, 220));
@@ -134,7 +138,6 @@ void GalaxyWindow::paintEvent(QPaintEvent *event)
 
     QPainter p(this);
     p.setRenderHint(QPainter::Antialiasing, true);
-    p.setRenderHint(QPainter::HighQualityAntialiasing, true);
 
     paintBackground(p);
     drawCenterBody(p);

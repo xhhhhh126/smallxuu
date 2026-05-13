@@ -1,4 +1,5 @@
 #include "particle.h"
+
 #include <QPainter>
 #include <QRandomGenerator>
 #include <QtMath>
@@ -15,13 +16,11 @@ void Particle::reset(const QPointF& center, const QColor& c)
 {
     auto *rng = QRandomGenerator::global();
 
-    // 随机角度、距离
     const double angle = rng->generateDouble() * 2.0 * M_PI;
     const double distance = 40.0 + rng->generateDouble() * 260.0;
 
     pos = center + QPointF(std::cos(angle) * distance, std::sin(angle) * distance);
 
-    // 切向速度，让粒子更像“绕中心旋转”
     QPointF radius = pos - center;
     const double len = std::hypot(radius.x(), radius.y());
     QPointF tangent(-radius.y() / (len + 0.0001), radius.x() / (len + 0.0001));
@@ -50,12 +49,11 @@ void Particle::update(const QPointF& center, float gravityStrength)
     const double dist = std::sqrt(distSq);
     QPointF norm = dir / dist;
 
-    // 一个简单的中心吸引力
     const double force = gravityStrength * 2200.0 / distSq;
     acc = norm * force;
 
     vel += acc;
-    vel *= 0.992;   // 阻尼，避免越转越飞
+    vel *= 0.992;
     pos += vel;
 
     trail[trailIndex] = pos;
@@ -66,7 +64,6 @@ void Particle::update(const QPointF& center, float gravityStrength)
 
 void Particle::draw(QPainter& p) const
 {
-    // 画尾迹
     for (int i = 0; i < TRAIL_LENGTH - 1; ++i) {
         int idx1 = (trailIndex - 1 - i + TRAIL_LENGTH) % TRAIL_LENGTH;
         int idx2 = (trailIndex - 2 - i + TRAIL_LENGTH) % TRAIL_LENGTH;
@@ -81,7 +78,6 @@ void Particle::draw(QPainter& p) const
         p.drawLine(trail[idx1], trail[idx2]);
     }
 
-    // 粒子本体
     QColor body = color;
     body.setAlpha(220);
 
