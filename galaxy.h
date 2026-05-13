@@ -1,45 +1,49 @@
 #ifndef GALAXY_H
 #define GALAXY_H
 
-#include <QMainWindow>
+#include <QWidget>
+#include <QVector>
+#include <QPointF>
+#include <QColor>
 #include <QTimer>
 #include <QMouseEvent>
-#include <QPainter>
-#include <QPointF>
-#include <QVector>
-#include <QColor>
-#include <ctime>
-#include "particle.h"
+#include <QWheelEvent>
+#include <QPaintEvent>
+#include <QResizeEvent>
 
-class GalaxyWindow : public QMainWindow {
-    Q_OBJECT
+class Particle;
 
+class GalaxyWindow : public QWidget
+{
 public:
-    GalaxyWindow(QWidget *parent = nullptr);
-    ~GalaxyWindow();
+    explicit GalaxyWindow(QWidget *parent = nullptr);
+    ~GalaxyWindow() override = default;
 
 protected:
-    void paintEvent(QPaintEvent*);
-    void mousePressEvent(QMouseEvent* e) override;
-    void mouseMoveEvent(QMouseEvent* e) override;
-    void mouseReleaseEvent(QMouseEvent*) override;
-    void wheelEvent(QWheelEvent* e) override;
-
-private slots:
-    void updateScene();
+    void paintEvent(QPaintEvent *event) override;
+    void resizeEvent(QResizeEvent *event) override;
+    void mousePressEvent(QMouseEvent *event) override;
+    void mouseMoveEvent(QMouseEvent *event) override;
+    void mouseReleaseEvent(QMouseEvent *event) override;
+    void wheelEvent(QWheelEvent *event) override;
 
 private:
-    QVector<Particle*> particles;
-    QTimer* timer;
-    QPointF center;          // 星系中心
-    QPointF targetCenter;    // 目标中心
-    bool dragging;
-    float gravityStrength;
-    int particleCount;
-
+    void updateScene();
     void spawnParticles(int count);
     void paintBackground(QPainter& p);
     void drawCenterBody(QPainter& p);
+
+private:
+    QVector<Particle*> particles;
+    QTimer timer;
+
+    QPointF center;
+    QPointF targetCenter;
+
+    bool dragging = false;
+    float gravityStrength = 1.0f;
+    int particleCount = 400;
+    bool inited = false;
 };
 
-#endif
+#endif // GALAXY_H

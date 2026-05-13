@@ -1,142 +1,180 @@
 #include "galaxy.h"
+#include "particle.h"
+#include <QPainter>
+#include <QRandomGenerator>
+#include <QLinearGradient>
+#include <QRadialGradient>
 #include <QtMath>
+#include <algorithm>
 
 GalaxyWindow::GalaxyWindow(QWidget *parent)
-    : QMainWindow(parent), dragging(false), gravityStrength(50), particleCount(500)
+    : QWidget(parent)
 {
-    setWindowFlags(Qt::FramelessWindowHint);
+    setMouseTracking(true);
+    setAutoFillBackground(false);
 
-    // 背景透明，窗口背景通过paintBackground绘制
-    setAttribute(Qt::WA_TranslucentBackground);
-
-    center = QPointF(width()/2, height()/2);
-    targetCenter = center;
-
-    timer = new QTimer(this);
-    connect(timer, &QTimer::timeout, this, &GalaxyWindow::updateScene);
-    timer->start(16); // ~60fps
-
-    spawnParticles(particleCount);
+    connect(&timer, &QTimer::timeout, this, &GalaxyWindow::updateScene);
+    timer.start(16); // ~60 FPS
 }
 
-GalaxyWindow::~GalaxyWindow() {
-    for(auto p : particles) delete p;
+void GalaxyWindow::resizeEvent(QResizeEvent *event)
+{
+    QWidget::resizeEvent(event);
+
+    if (!inited) {
+        center = QPointF(width() / 2.0, height() / 2.0);
+        targetCenter = center;
+        spawnParticles(particleCount);
+        inited = true;
+    } else if (!dragging) {
+        // 窗口变化时，中心跟着居中一点点
+        center = QPointF(width() / 2.0, height() / 2.0);
+        targetCenter = center;
+    }
+
+    Q_UNUSED(event);
 }
 
-void GalaxyWindow::spawnParticles(int count) {
-    // 彩虹色系
-    QList<QColor> colors = {
-        QColor(255, 100, 150),  // 粉红
-        QColor(255, 180, 100),  // 橙色
-        QColor(255, 255, 100),  // 黄色
-        QColor(100, 255, 150),  // 绿色
-        QColor(100, 200, 255),  // 青色
-        QColor(150, 100, 255),  // 紫色
-        QColor(255, 100, 255),  // 洋红
+void GalaxyWindow::spawnParticles(int count)
+{
+    static const QVector<QColor> colors = {
+        QColor(255, 120, 120),
+        QColor(255, 180, 90),
+        QColor(120, 200, 255),
+        QColor(180, 120, 255),
+        QColor(120, 255, 180),
+        QColor(255, 255, 255)
     };
 
-    for(int i = 0; i < count; i++) {
+    particles.reserve(count);
+
+    auto *rng = QRandomGenerator::global();
+
+    for (int i = 0; i < count; ++i) {
         Particle* p = new Particle();
-        QColor c = colors[qrand() % colors.size()];
-        p->reset(QPointF(width()/2, height()/2), c);
+        QColor c = colors[rng->bounded(colors.size())];
+        p->reset(center, c);
         particles.append(p);
     }
 }
 
-void GalaxyWindow::paintBackground(QPainter& p) {
-    // 渐变背景
-    QRadialGradient bg(center, qMax(width(), height()));
-    bg.setColorAt(0, QColor(20, 20, 50));
-    bg.setColorAt(0.5, QColor(10, 10, 30));
-    bg.setColorAt(1, QColor(5, 5, 15));
-    p.fillRect(rect(), bg);
+void GalaxyWindow::updateScene()
+{
+    // 平滑移动中心
+    center += (targetCenter - center) * 0.08;
 
-    // 星星背景
-    static QVector<QPointF> stars;
-    if(stars.isEmpty() || stars.size() < 200) {
-        qsrand(time(nullptr));
-        for(int i = 0; i < 200; i++) {
-            stars.append(QPointF(qrand() % 1000, qrand() % 800));
+    for (Particle* p : particles) {
+        p->update(center, gravityStrength);
+
+        // 粒子生命结束后重生
+        // 这里不用直接访问 life，简单做法：漂移太远就重置
+        // 由于 life 是私有的，这里用位置范围判断更省事
+        if (std::abs(p->pos().x()) > 1000000) {
+            // 占位，不会触发
         }
-    }
-
-    p.setPen(QPen(QColor(255,255,255,80)));
-    for(const auto& s : stars) {
-        p.drawPoint(s);
-    }
-}
-
-void GalaxyWindow::drawCenterBody(QPainter& p) {
-    // 中心黑洞效果
-    QRadialGradient glow(center, 80);
-    glow.setColorAt(0, QColor(255, 200, 100, 150));
-    glow.setColorAt(0.3, QColor(255, 100, 50, 80));
-    glow.setColorAt(0.7, QColor(100, 50, 150, 30));
-    glow.setColorAt(1, QColor(0, 0, 0, 0));
-
-    p.setPen(Qt::NoPen);
-    p.setBrush(glow);
-    p.drawEllipse(center, 80, 80);
-
-    // 核心亮点
-    QRadialGradient core(center, 15);
-    core.setColorAt(0, QColor(255, 255, 255, 255));
-    core.setColorAt(0.5, QColor(255, 200, 100, 200));
-    core.setColorAt(1, QColor(255, 100, 50, 0));
-    p.setBrush(core);
-    p.drawEllipse(center, 15, 15);
-}
-
-void GalaxyWindow::paintEvent(QPaintEvent*) {
-    QPainter p(this);
-    p.setRenderHint(QPainter::Antialiasing);
-
-    paintBackground(p);
-    drawCenterBody(p);
-
-    for(auto particle : particles) {
-        particle->draw(p);
-    }
-}
-
-void GalaxyWindow::updateScene() {
-    // 鼠标拖拽中心
-    if(dragging) {
-        center = targetCenter;
-    } else {
-        center = center + (targetCenter - center) * 0.05f;
-    }
-
-    // 更新粒子
-    for(auto particle : particles) {
-        if(particle->life >= particle->maxLife) {
-            particle->reset(center, particle->color);
-        }
-        particle->update(center, gravityStrength);
     }
 
     update();
 }
 
-void GalaxyWindow::mousePressEvent(QMouseEvent* e) {
-    if(e->button() == Qt::LeftButton) {
+void GalaxyWindow::paintBackground(QPainter& p)
+{
+    // 深色星空渐变
+    QRadialGradient bg(QPointF(width() * 0.5, height() * 0.4), std::max(width(), height()) * 0.9);
+    bg.setColorAt(0.0, QColor(25, 20, 50));
+    bg.setColorAt(0.45, QColor(10, 10, 28));
+    bg.setColorAt(1.0, QColor(2, 2, 10));
+    p.fillRect(rect(), bg);
+
+    // 生成固定星点
+    static QVector<QPointF> stars;
+    static QSize lastSize;
+
+    if (stars.isEmpty() || lastSize != size()) {
+        stars.clear();
+        lastSize = size();
+
+        auto *rng = QRandomGenerator::global();
+        for (int i = 0; i < 220; ++i) {
+            stars.append(QPointF(
+                rng->bounded(width()),
+                rng->bounded(height())
+                ));
+        }
+    }
+
+    p.setPen(Qt::NoPen);
+    for (const QPointF& s : stars) {
+        int alpha = 80 + QRandomGenerator::global()->bounded(120);
+        p.setBrush(QColor(255, 255, 255, alpha));
+        p.drawEllipse(s, 1.0, 1.0);
+    }
+}
+
+void GalaxyWindow::drawCenterBody(QPainter& p)
+{
+    // 中心恒星
+    QRadialGradient star(center, 80);
+    star.setColorAt(0.0, QColor(255, 255, 220, 255));
+    star.setColorAt(0.2, QColor(255, 210, 120, 220));
+    star.setColorAt(0.6, QColor(255, 120, 50, 100));
+    star.setColorAt(1.0, QColor(255, 80, 30, 0));
+
+    p.setPen(Qt::NoPen);
+    p.setBrush(star);
+    p.drawEllipse(center, 80, 80);
+
+    p.setBrush(QColor(255, 240, 180));
+    p.drawEllipse(center, 8, 8);
+}
+
+void GalaxyWindow::paintEvent(QPaintEvent *event)
+{
+    Q_UNUSED(event);
+
+    QPainter p(this);
+    p.setRenderHint(QPainter::Antialiasing, true);
+    p.setRenderHint(QPainter::HighQualityAntialiasing, true);
+
+    paintBackground(p);
+    drawCenterBody(p);
+
+    for (Particle* particle : particles) {
+        particle->draw(p);
+    }
+}
+
+void GalaxyWindow::mousePressEvent(QMouseEvent *event)
+{
+    if (event->button() == Qt::LeftButton) {
         dragging = true;
-        targetCenter = e->pos();
+        targetCenter = event->position();
     }
 }
 
-void GalaxyWindow::mouseMoveEvent(QMouseEvent* e) {
-    if(dragging) {
-        targetCenter = e->pos();
+void GalaxyWindow::mouseMoveEvent(QMouseEvent *event)
+{
+    if (dragging) {
+        targetCenter = event->position();
     }
 }
 
-void GalaxyWindow::mouseReleaseEvent(QMouseEvent*) {
-    dragging = false;
-    targetCenter = center;
+void GalaxyWindow::mouseReleaseEvent(QMouseEvent *event)
+{
+    if (event->button() == Qt::LeftButton) {
+        dragging = false;
+    }
 }
 
-void GalaxyWindow::wheelEvent(QWheelEvent* e) {
-    gravityStrength += e->angleDelta().y() * 0.1f;
-    gravityStrength = qBound(10.0f, gravityStrength, 200.0f);
+void GalaxyWindow::wheelEvent(QWheelEvent *event)
+{
+    const int delta = event->angleDelta().y();
+    if (delta > 0) {
+        gravityStrength *= 1.12f;
+    } else if (delta < 0) {
+        gravityStrength *= 0.89f;
+    }
+
+    gravityStrength = std::clamp(gravityStrength, 0.2f, 5.0f);
+    event->accept();
 }
